@@ -13,9 +13,13 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
+import { MultiplayerApp } from './src/App.multiplayer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CANVAS_SIZE = Math.min(SCREEN_WIDTH - 40, 400);
+
+// App mode: 'select' | 'multiplayer' | 'local'
+type AppMode = 'select' | 'multiplayer' | 'local';
 
 // Word categories for different party types
 const WORD_CATEGORIES = {
@@ -59,7 +63,119 @@ interface GameSettings {
   teamCount: 2 | 3 | 4;
 }
 
+// Wrapper component to handle mode selection
 export default function App() {
+  const [appMode, setAppMode] = useState<AppMode>('select');
+
+  if (appMode === 'select') {
+    return <ModeSelectScreen onSelectMultiplayer={() => setAppMode('multiplayer')} onSelectLocal={() => setAppMode('local')} />;
+  }
+
+  if (appMode === 'multiplayer') {
+    return <MultiplayerApp onPlayLocal={() => setAppMode('local')} />;
+  }
+
+  return <LocalGameApp onBack={() => setAppMode('select')} />;
+}
+
+// Mode selection screen
+function ModeSelectScreen({ onSelectMultiplayer, onSelectLocal }: { onSelectMultiplayer: () => void; onSelectLocal: () => void }) {
+  return (
+    <SafeAreaView style={modeStyles.container}>
+      <View style={modeStyles.content}>
+        <Text style={modeStyles.emoji}>🎨</Text>
+        <Text style={modeStyles.title}>Pictionary</Text>
+        <Text style={modeStyles.subtitle}>Party</Text>
+
+        <View style={modeStyles.buttons}>
+          <TouchableOpacity style={[modeStyles.button, modeStyles.multiplayerButton]} onPress={onSelectMultiplayer}>
+            <Text style={modeStyles.buttonIcon}>🌐</Text>
+            <View>
+              <Text style={modeStyles.buttonTitle}>Online Multiplayer</Text>
+              <Text style={modeStyles.buttonDesc}>Play with friends anywhere</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[modeStyles.button, modeStyles.localButton]} onPress={onSelectLocal}>
+            <Text style={modeStyles.buttonIcon}>📱</Text>
+            <View>
+              <Text style={modeStyles.buttonTitle}>Local Party</Text>
+              <Text style={modeStyles.buttonDesc}>Same device, pass & play</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={modeStyles.tagline}>Draw. Guess. Win!</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const modeStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#6B4EE6',
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emoji: {
+    fontSize: 80,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  subtitle: {
+    fontSize: 36,
+    fontWeight: '600',
+    color: '#FFB347',
+    marginBottom: 48,
+  },
+  buttons: {
+    width: '100%',
+    gap: 16,
+    marginBottom: 48,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 16,
+    gap: 16,
+  },
+  multiplayerButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  localButton: {
+    backgroundColor: '#4ECDC4',
+  },
+  buttonIcon: {
+    fontSize: 36,
+  },
+  buttonTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  buttonDesc: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  tagline: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.6)',
+    fontStyle: 'italic',
+  },
+});
+
+// Local game component (existing code)
+function LocalGameApp({ onBack }: { onBack: () => void }) {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [currentWord, setCurrentWord] = useState('');
   const [scores, setScores] = useState<number[]>([0, 0]);
@@ -220,6 +336,10 @@ export default function App() {
 
       <TouchableOpacity style={styles.resetButton} onPress={resetGame}>
         <Text style={styles.resetButtonText}>🔄 New Game</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.backToModeButton} onPress={onBack}>
+        <Text style={styles.backToModeText}>← Back to Menu</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -516,6 +636,15 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: '#999',
     fontSize: 14,
+  },
+  backToModeButton: {
+    marginTop: 20,
+    padding: 12,
+  },
+  backToModeText: {
+    color: '#6B4EE6',
+    fontSize: 16,
+    fontWeight: '600',
   },
   // Settings styles
   settingsContainer: {

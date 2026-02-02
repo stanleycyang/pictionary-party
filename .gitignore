@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# API Keys (NEVER commit)
+*.p8
+google-play-service-account.json
+
 # Expo
 .expo/
 dist/

@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.stanleycyang.pictionaryparty",
       "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "Pictionary Party"
+        "CFBundleDisplayName": "Pictionary Party",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
