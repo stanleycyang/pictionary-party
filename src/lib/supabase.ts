@@ -2,9 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supabase configuration
-// These will be replaced with actual values from Supabase dashboard
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://kxdlhtyqoimlosjlggqc.supabase.co';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4ZGxodHlxb2ltbG9zamxnZ3FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwNTMwMzgsImV4cCI6MjA4NTYyOTAzOH0.AtWEhwmPMmaXZoA8ueoON6xDJmUAU_NQISD-3UCA6oI';
 
 // Create Supabase client with AsyncStorage for persistence
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -23,8 +22,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 // Check if Supabase is configured
 export const isSupabaseConfigured = (): boolean => {
-  return SUPABASE_URL !== 'https://placeholder.supabase.co' && 
-         SUPABASE_ANON_KEY !== 'placeholder-key';
+  return SUPABASE_URL.includes('supabase.co') && 
+         SUPABASE_ANON_KEY.length > 50;
 };
 
 // Generate a random room code (6 characters)
