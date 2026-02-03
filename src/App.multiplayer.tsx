@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, Animated, Easing, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, Alert, Animated, Easing, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { HomeScreen } from './screens/HomeScreen';
 import { CreateRoomScreen } from './screens/CreateRoomScreen';
 import { JoinRoomScreen } from './screens/JoinRoomScreen';
@@ -18,6 +18,7 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
   const [screen, setScreen] = useState<Screen>('home');
   const [timeRemaining, setTimeRemaining] = useState(60);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [joinTimeout, setJoinTimeout] = useState<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Screen transition animation
@@ -165,10 +166,36 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
     if (room?.status === 'playing' && screen === 'lobby') {
       transitionTo('game');
     }
-    if (!room && screen !== 'home' && screen !== 'create' && screen !== 'join') {
-      transitionTo('home');
-    }
+    // Note: Don't auto-navigate to home when room is null - 
+    // the lobby screen now shows a loading state while waiting for room sync
   }, [room?.status, screen, transitionTo]);
+  
+  // Timeout for joining room - if no response from host after 15 seconds
+  useEffect(() => {
+    if (screen === 'lobby' && !room) {
+      const timeout = setTimeout(() => {
+        Alert.alert(
+          'Connection Timeout',
+          'Could not connect to the room. The room may no longer exist.',
+          [{
+            text: 'OK',
+            onPress: () => {
+              leaveRoom();
+              transitionTo('home');
+            }
+          }]
+        );
+      }, 15000); // 15 second timeout
+      
+      setJoinTimeout(timeout);
+      
+      return () => clearTimeout(timeout);
+    } else if (joinTimeout && room) {
+      // Room received, clear timeout
+      clearTimeout(joinTimeout);
+      setJoinTimeout(null);
+    }
+  }, [screen, room, leaveRoom, transitionTo]);
 
   // Handle room creation
   const handleCreateRoom = useCallback(async (playerName: string) => {
@@ -252,9 +279,23 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
         );
 
       case 'lobby':
+        // Show loading while waiting for room state from host
         if (!room || !currentPlayer) {
-          transitionTo('home');
-          return null;
+          return (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#FFE66D" />
+              <Text style={styles.loadingText}>Joining room...</Text>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => {
+                  leaveRoom();
+                  transitionTo('home');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          );
         }
         return (
           <LobbyScreen
@@ -326,6 +367,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 16,
     fontWeight: '500',
+  },
+  cancelButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
