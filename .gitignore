@@ -45,3 +45,4 @@ coverage/
 .vscode/
 *.swp
 *.swo
+google-play-service-account.json

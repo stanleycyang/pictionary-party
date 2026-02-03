@@ -5,11 +5,61 @@ import { useGameStore } from '../lib/gameStore';
 import { Player, Room, RoomSettings, DrawingEvent, RoomEvent, ChatMessage, DrawingPath } from '../types/multiplayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Storage keys for session persistence
+const STORAGE_KEYS = {
+  PLAYER_ID: 'playerId',
+  PLAYER_NAME: 'playerName',
+  ROOM_CODE: 'roomCode',
+  SESSION_ACTIVE: 'sessionActive',
+};
+
 const DEFAULT_SETTINGS: RoomSettings = {
   timer_seconds: 60,
   difficulty: 'medium',
   max_players: 8,
   allow_tag_team: true,
+};
+
+// Session persistence helpers
+export const saveSession = async (roomCode: string, playerName: string) => {
+  try {
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.ROOM_CODE, roomCode],
+      [STORAGE_KEYS.PLAYER_NAME, playerName],
+      [STORAGE_KEYS.SESSION_ACTIVE, 'true'],
+    ]);
+  } catch (e) {
+    console.error('Failed to save session:', e);
+  }
+};
+
+export const clearSession = async () => {
+  try {
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.ROOM_CODE,
+      STORAGE_KEYS.SESSION_ACTIVE,
+    ]);
+  } catch (e) {
+    console.error('Failed to clear session:', e);
+  }
+};
+
+export const getSavedSession = async (): Promise<{ roomCode: string; playerName: string } | null> => {
+  try {
+    const [[, roomCode], [, playerName], [, sessionActive]] = await AsyncStorage.multiGet([
+      STORAGE_KEYS.ROOM_CODE,
+      STORAGE_KEYS.PLAYER_NAME,
+      STORAGE_KEYS.SESSION_ACTIVE,
+    ]);
+    
+    if (sessionActive === 'true' && roomCode && playerName) {
+      return { roomCode, playerName };
+    }
+    return null;
+  } catch (e) {
+    console.error('Failed to get saved session:', e);
+    return null;
+  }
 };
 
 // Word lists by difficulty
@@ -120,6 +170,9 @@ export const useMultiplayer = () => {
       // Join realtime channel
       await joinChannel(code, hostPlayer);
       
+      // Save session for reconnection
+      await saveSession(code, playerName);
+      
       return code;
     } catch (err: any) {
       setError(err.message || 'Failed to create room');
@@ -153,6 +206,12 @@ export const useMultiplayer = () => {
       
       // Join realtime channel
       const success = await joinChannel(code.toUpperCase(), newPlayer);
+      
+      // Save session for reconnection
+      if (success) {
+        await saveSession(code.toUpperCase(), playerName);
+      }
+      
       return success;
     } catch (err: any) {
       setError(err.message || 'Failed to join room');
@@ -561,6 +620,9 @@ export const useMultiplayer = () => {
 
   // Leave room
   const leaveRoom = useCallback(async () => {
+    // Clear saved session
+    await clearSession();
+    
     if (channelRef.current) {
       await supabase.removeChannel(channelRef.current);
       channelRef.current = null;

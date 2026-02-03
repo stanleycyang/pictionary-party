@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Alert, Animated, Easing, ActivityIndicator, Text } from 'react-native';
 import { HomeScreen } from './screens/HomeScreen';
 import { CreateRoomScreen } from './screens/CreateRoomScreen';
 import { JoinRoomScreen } from './screens/JoinRoomScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { MultiplayerGameScreen } from './screens/MultiplayerGameScreen';
-import { useMultiplayer } from './hooks/useMultiplayer';
+import { useMultiplayer, getSavedSession, clearSession } from './hooks/useMultiplayer';
 import { isSupabaseConfigured } from './lib/supabase';
 
 type Screen = 'home' | 'create' | 'join' | 'lobby' | 'game';
@@ -17,6 +17,7 @@ interface MultiplayerAppProps {
 export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) => {
   const [screen, setScreen] = useState<Screen>('home');
   const [timeRemaining, setTimeRemaining] = useState(60);
+  const [isRestoring, setIsRestoring] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Screen transition animation
@@ -42,6 +43,58 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
     sendDrawing,
     sendChat,
   } = useMultiplayer();
+
+  // Check for saved session on mount and offer to rejoin
+  useEffect(() => {
+    const checkSavedSession = async () => {
+      try {
+        const savedSession = await getSavedSession();
+        
+        if (savedSession && isSupabaseConfigured()) {
+          // Found a saved session - ask if they want to rejoin
+          Alert.alert(
+            'Rejoin Game?',
+            `You were in a game with room code: ${savedSession.roomCode}\n\nWould you like to rejoin?`,
+            [
+              {
+                text: 'No, Start Fresh',
+                style: 'cancel',
+                onPress: async () => {
+                  await clearSession();
+                  setIsRestoring(false);
+                },
+              },
+              {
+                text: 'Rejoin',
+                onPress: async () => {
+                  const success = await joinRoom(savedSession.roomCode, savedSession.playerName);
+                  if (success) {
+                    setScreen('lobby');
+                  } else {
+                    // Room no longer exists
+                    Alert.alert(
+                      'Room Not Found',
+                      'The game session has ended. Starting fresh.',
+                      [{ text: 'OK' }]
+                    );
+                    await clearSession();
+                  }
+                  setIsRestoring(false);
+                },
+              },
+            ]
+          );
+        } else {
+          setIsRestoring(false);
+        }
+      } catch (e) {
+        console.error('Failed to check saved session:', e);
+        setIsRestoring(false);
+      }
+    };
+    
+    checkSavedSession();
+  }, [joinRoom]);
 
   // Animate screen transitions
   const transitionTo = useCallback((newScreen: Screen) => {
@@ -241,6 +294,16 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
     }
   };
 
+  // Show loading while checking for saved session
+  if (isRestoring) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFE66D" />
+        <Text style={styles.loadingText}>Checking for saved game...</Text>
+      </View>
+    );
+  }
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       {renderScreen()}
@@ -251,6 +314,18 @@ export const MultiplayerApp: React.FC<MultiplayerAppProps> = ({ onPlayLocal }) =
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#6B4EE6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 16,
+    marginTop: 16,
+    fontWeight: '500',
   },
 });
 
