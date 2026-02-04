@@ -207,6 +207,272 @@ function ModeSelectScreen({ onSelectMultiplayer, onSelectLocal }: { onSelectMult
   );
 }
 
+// Word Reveal Modal Component - extracted for better performance
+interface WordRevealModalProps {
+  visible: boolean;
+  word: string;
+  teamColor: string;
+  teamName: string;
+  teamEmoji: string;
+  teamBgColor: string;
+  countdown: number;
+}
+
+const WordRevealModal: React.FC<WordRevealModalProps> = ({
+  visible,
+  word,
+  teamColor,
+  teamName,
+  teamEmoji,
+  teamBgColor,
+  countdown,
+}) => {
+  const cardScale = useRef(new Animated.Value(0.8)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const countdownScale = useRef(new Animated.Value(1)).current;
+  const wordBounce = useRef(new Animated.Value(0)).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0.3)).current;
+
+  // Reset and animate on show
+  useEffect(() => {
+    if (visible) {
+      cardScale.setValue(0.8);
+      cardOpacity.setValue(0);
+      
+      // Card entrance animation
+      Animated.parallel([
+        Animated.spring(cardScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+      
+      // Word bounce animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(wordBounce, { toValue: -8, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(wordBounce, { toValue: 0, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      ).start();
+
+      // Shimmer effect
+      Animated.loop(
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })
+      ).start();
+
+      // Glow pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [visible]);
+
+  // Pulse animation on countdown change
+  useEffect(() => {
+    if (countdown > 0) {
+      countdownScale.setValue(1.5);
+      Animated.spring(countdownScale, { toValue: 1, friction: 4, tension: 150, useNativeDriver: true }).start();
+    }
+  }, [countdown]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={wordModalStyles.overlay}>
+        {/* Background glow */}
+        <Animated.View style={[wordModalStyles.bgGlow, { opacity: glowAnim }]} />
+        
+        <Animated.View style={[
+          wordModalStyles.card,
+          { transform: [{ scale: cardScale }], opacity: cardOpacity }
+        ]}>
+          {/* Decorative top accent */}
+          <View style={[wordModalStyles.topAccent, { backgroundColor: teamBgColor }]} />
+          
+          {/* Team badge */}
+          <View style={[wordModalStyles.teamBadge, { backgroundColor: teamBgColor }]}>
+            <Text style={wordModalStyles.teamBadgeText}>{teamEmoji} Team {teamName}</Text>
+          </View>
+          
+          {/* Word section */}
+          <View style={wordModalStyles.wordSection}>
+            <Text style={wordModalStyles.labelText}>Your word is</Text>
+            <Animated.View style={[wordModalStyles.wordContainer, { transform: [{ translateY: wordBounce }] }]}>
+              <Text style={wordModalStyles.wordText}>{word.toUpperCase()}</Text>
+            </Animated.View>
+          </View>
+          
+          {/* Divider */}
+          <View style={wordModalStyles.divider} />
+          
+          {/* Countdown section */}
+          <View style={wordModalStyles.countdownSection}>
+            <Text style={wordModalStyles.hintText}>🤫 Don't say it out loud!</Text>
+            
+            <View style={wordModalStyles.countdownWrapper}>
+              <Animated.View style={[
+                wordModalStyles.countdownCircle,
+                { transform: [{ scale: countdownScale }] }
+              ]}>
+                <Text style={wordModalStyles.countdownNumber}>{countdown}</Text>
+              </Animated.View>
+            </View>
+            
+            <Text style={wordModalStyles.readyText}>
+              {countdown > 1 ? 'Get ready to draw...' : 'Starting now!'}
+            </Text>
+          </View>
+          
+          {/* Progress dots */}
+          <View style={wordModalStyles.progressDots}>
+            {[3, 2, 1].map((n) => (
+              <View
+                key={n}
+                style={[
+                  wordModalStyles.dot,
+                  countdown <= n && countdown > 0 && wordModalStyles.dotActive,
+                  countdown === n && wordModalStyles.dotCurrent,
+                ]}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+const wordModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bgGlow: {
+    position: 'absolute',
+    width: 400,
+    height: 400,
+    borderRadius: 200,
+    backgroundColor: '#6B4EE6',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    width: '88%',
+    maxWidth: 360,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.5,
+    shadowRadius: 40,
+    elevation: 24,
+  },
+  topAccent: {
+    height: 6,
+    width: '100%',
+  },
+  teamBadge: {
+    alignSelf: 'center',
+    marginTop: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  teamBadgeText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  wordSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+  },
+  labelText: {
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 8,
+  },
+  wordContainer: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: '#FFE0E0',
+  },
+  wordText: {
+    fontSize: 42,
+    fontWeight: 'bold',
+    color: '#FF6B6B',
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginHorizontal: 24,
+  },
+  countdownSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  hintText: {
+    fontSize: 15,
+    color: '#666',
+    marginBottom: 20,
+  },
+  countdownWrapper: {
+    marginBottom: 16,
+  },
+  countdownCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#6B4EE6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6B4EE6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  countdownNumber: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  readyText: {
+    fontSize: 16,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  progressDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    paddingBottom: 24,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ddd',
+  },
+  dotActive: {
+    backgroundColor: '#4ECDC4',
+  },
+  dotCurrent: {
+    backgroundColor: '#6B4EE6',
+    transform: [{ scale: 1.3 }],
+  },
+});
+
 const modeStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#6B4EE6' },
   content: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' },
@@ -561,72 +827,21 @@ function LocalGameApp({ onBack }: { onBack: () => void }) {
     </SafeAreaView>
   );
 
-  // Word Reveal Modal Component with animations
-  const WordRevealModal = () => {
-    const cardScale = useRef(new Animated.Value(0.8)).current;
-    const cardOpacity = useRef(new Animated.Value(0)).current;
-    const countdownScale = useRef(new Animated.Value(1)).current;
-    const wordBounce = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-      if (showWord) {
-        // Card entrance animation
-        Animated.parallel([
-          Animated.spring(cardScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
-          Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        ]).start();
-        
-        // Word bounce animation
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(wordBounce, { toValue: -8, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-            Animated.timing(wordBounce, { toValue: 0, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          ])
-        ).start();
-      }
-    }, [showWord]);
-
-    useEffect(() => {
-      // Pulse animation on countdown change
-      Animated.sequence([
-        Animated.timing(countdownScale, { toValue: 1.3, duration: 150, useNativeDriver: true }),
-        Animated.spring(countdownScale, { toValue: 1, friction: 4, useNativeDriver: true }),
-      ]).start();
-    }, [wordCountdown]);
-
-    return (
-      <Modal visible={showWord} transparent animationType="fade">
-        <View style={styles.wordModal}>
-          <Animated.View style={[styles.wordCard, { transform: [{ scale: cardScale }], opacity: cardOpacity }]}>
-            <View style={[styles.wordTeamBadge, { backgroundColor: teamBgColors[currentTeam] }]}>
-              <Text style={styles.wordTeamBadgeText}>{teamColors[currentTeam]} Team {teamNames[currentTeam]}</Text>
-            </View>
-            
-            <Text style={styles.wordCardLabel}>Your word is:</Text>
-            <Animated.Text style={[styles.wordCardWord, { transform: [{ translateY: wordBounce }] }]}>
-              {currentWord.toUpperCase()}
-            </Animated.Text>
-            
-            <View style={styles.countdownContainer}>
-              <Text style={styles.wordCardHint}>🤫 Don't say it!</Text>
-              <View style={styles.countdownCircle}>
-                <Animated.Text style={[styles.countdownNumber, { transform: [{ scale: countdownScale }] }]}>
-                  {wordCountdown}
-                </Animated.Text>
-              </View>
-              <Text style={styles.countdownLabel}>Get ready...</Text>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
-    );
-  };
+  // Word Reveal Modal - uses key prop to force remount on each show
 
   // DRAWING SCREEN
   const renderDrawing = () => (
     <SafeAreaView style={styles.container}>
       {/* Word Modal */}
-      <WordRevealModal />
+      <WordRevealModal
+        visible={showWord}
+        word={currentWord}
+        teamColor={teamColors[currentTeam]}
+        teamName={teamNames[currentTeam]}
+        teamEmoji={teamColors[currentTeam]}
+        teamBgColor={teamBgColors[currentTeam]}
+        countdown={wordCountdown}
+      />
 
       {/* Header with Timer */}
       <View style={styles.drawingHeader}>
@@ -816,19 +1031,6 @@ const styles = StyleSheet.create({
   correctBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   skipBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,107,107,0.6)', justifyContent: 'center', alignItems: 'center' },
   skipBtnText: { fontSize: 24 },
-
-  // Word Modal
-  wordModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
-  wordCard: { backgroundColor: '#fff', padding: 32, borderRadius: 32, alignItems: 'center', margin: 20, width: '88%', shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 24, elevation: 16 },
-  wordTeamBadge: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginBottom: 20 },
-  wordTeamBadgeText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
-  wordCardLabel: { fontSize: 16, color: '#888', marginBottom: 8 },
-  wordCardWord: { fontSize: 46, fontWeight: 'bold', color: '#FF6B6B', marginBottom: 24, textAlign: 'center' },
-  wordCardHint: { fontSize: 15, color: '#666', textAlign: 'center', marginBottom: 16 },
-  countdownContainer: { alignItems: 'center', marginTop: 8 },
-  countdownCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#6B4EE6', justifyContent: 'center', alignItems: 'center', marginBottom: 12, shadowColor: '#6B4EE6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12 },
-  countdownNumber: { fontSize: 42, fontWeight: 'bold', color: '#fff' },
-  countdownLabel: { fontSize: 14, color: '#aaa', fontStyle: 'italic' },
 
   // Reveal
   revealContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },

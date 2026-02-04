@@ -14,10 +14,257 @@ import {
   Easing,
   Keyboard,
   TouchableWithoutFeedback,
+  Modal,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { Player, Room, DrawingEvent, ChatMessage, DrawingPath } from '../types/multiplayer';
+
+// Word Reveal Modal for Multiplayer
+interface WordRevealModalProps {
+  visible: boolean;
+  word: string;
+  countdown: number;
+  teamEmoji: string;
+  teamName: string;
+  teamBgColor: string;
+}
+
+const WordRevealModal: React.FC<WordRevealModalProps> = ({
+  visible,
+  word,
+  countdown,
+  teamEmoji,
+  teamName,
+  teamBgColor,
+}) => {
+  const cardScale = useRef(new Animated.Value(0.8)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const countdownScale = useRef(new Animated.Value(1)).current;
+  const wordBounce = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (visible) {
+      cardScale.setValue(0.8);
+      cardOpacity.setValue(0);
+      
+      Animated.parallel([
+        Animated.spring(cardScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+      
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(wordBounce, { toValue: -8, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(wordBounce, { toValue: 0, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      countdownScale.setValue(1.5);
+      Animated.spring(countdownScale, { toValue: 1, friction: 4, tension: 150, useNativeDriver: true }).start();
+    }
+  }, [countdown]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={modalStyles.overlay}>
+        <Animated.View style={[modalStyles.bgGlow, { opacity: glowAnim }]} />
+        
+        <Animated.View style={[
+          modalStyles.card,
+          { transform: [{ scale: cardScale }], opacity: cardOpacity }
+        ]}>
+          <View style={[modalStyles.topAccent, { backgroundColor: teamBgColor }]} />
+          
+          <View style={[modalStyles.teamBadge, { backgroundColor: teamBgColor }]}>
+            <Text style={modalStyles.teamBadgeText}>{teamEmoji} Team {teamName}</Text>
+          </View>
+          
+          <View style={modalStyles.wordSection}>
+            <Text style={modalStyles.labelText}>Your word to draw is</Text>
+            <Animated.View style={[modalStyles.wordContainer, { transform: [{ translateY: wordBounce }] }]}>
+              <Text style={modalStyles.wordText}>{word?.toUpperCase() || '???'}</Text>
+            </Animated.View>
+          </View>
+          
+          <View style={modalStyles.divider} />
+          
+          <View style={modalStyles.countdownSection}>
+            <Text style={modalStyles.hintText}>🤫 Don't say it out loud!</Text>
+            
+            <View style={modalStyles.countdownWrapper}>
+              <Animated.View style={[
+                modalStyles.countdownCircle,
+                { transform: [{ scale: countdownScale }] }
+              ]}>
+                <Text style={modalStyles.countdownNumber}>{countdown}</Text>
+              </Animated.View>
+            </View>
+            
+            <Text style={modalStyles.readyText}>
+              {countdown > 1 ? 'Get ready to draw...' : 'Starting now!'}
+            </Text>
+          </View>
+          
+          <View style={modalStyles.progressDots}>
+            {[3, 2, 1].map((n) => (
+              <View
+                key={n}
+                style={[
+                  modalStyles.dot,
+                  countdown <= n && countdown > 0 && modalStyles.dotActive,
+                  countdown === n && modalStyles.dotCurrent,
+                ]}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bgGlow: {
+    position: 'absolute',
+    width: 400,
+    height: 400,
+    borderRadius: 200,
+    backgroundColor: '#6B4EE6',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    width: '88%',
+    maxWidth: 360,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.5,
+    shadowRadius: 40,
+    elevation: 24,
+  },
+  topAccent: {
+    height: 6,
+    width: '100%',
+  },
+  teamBadge: {
+    alignSelf: 'center',
+    marginTop: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  teamBadgeText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  wordSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+  },
+  labelText: {
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 8,
+  },
+  wordContainer: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: '#FFE0E0',
+  },
+  wordText: {
+    fontSize: 38,
+    fontWeight: 'bold',
+    color: '#FF6B6B',
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginHorizontal: 24,
+  },
+  countdownSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  hintText: {
+    fontSize: 15,
+    color: '#666',
+    marginBottom: 20,
+  },
+  countdownWrapper: {
+    marginBottom: 16,
+  },
+  countdownCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#6B4EE6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6B4EE6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  countdownNumber: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  readyText: {
+    fontSize: 16,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  progressDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    paddingBottom: 24,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ddd',
+  },
+  dotActive: {
+    backgroundColor: '#4ECDC4',
+  },
+  dotCurrent: {
+    backgroundColor: '#6B4EE6',
+    transform: [{ scale: 1.3 }],
+  },
+});
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CANVAS_SIZE = SCREEN_WIDTH - 32;
@@ -75,6 +322,13 @@ export const MultiplayerGameScreen: React.FC<MultiplayerGameScreenProps> = ({
   const [brushSize, setBrushSize] = useState(BRUSH_SIZES[1]);
   const [chatInput, setChatInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+  
+  // Word reveal state
+  const [showWordReveal, setShowWordReveal] = useState(false);
+  const [wordCountdown, setWordCountdown] = useState(3);
+  const wordRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastRoundRef = useRef<number>(0);
+  const lastWordRef = useRef<string | null>(null);
 
   // Animations
   const timerPulse = useRef(new Animated.Value(1)).current;
@@ -93,6 +347,69 @@ export const MultiplayerGameScreen: React.FC<MultiplayerGameScreenProps> = ({
   const teammates = players.filter(
     p => p.team === currentPlayer?.team && p.id !== currentPlayer?.id
   );
+
+  // Cleanup word reveal timer on unmount and reset refs
+  useEffect(() => {
+    // Reset refs when component mounts (new game)
+    lastRoundRef.current = 0;
+    lastWordRef.current = null;
+    
+    return () => {
+      if (wordRevealTimerRef.current) {
+        clearTimeout(wordRevealTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Show word reveal modal when round starts and player is the drawer
+  useEffect(() => {
+    const currentRound = room.current_round;
+    const currentWord = word;
+    
+    // Only show modal when:
+    // 1. Player is the drawer
+    // 2. There's a word to draw
+    // 3. Either the round changed OR we got a new word (for the same round)
+    const isNewRound = currentRound > lastRoundRef.current;
+    const isNewWord = currentWord && currentWord !== lastWordRef.current;
+    
+    if (isDrawing && currentWord && (isNewRound || isNewWord)) {
+      lastRoundRef.current = currentRound;
+      lastWordRef.current = currentWord;
+      
+      // Clear any existing timer
+      if (wordRevealTimerRef.current) {
+        clearTimeout(wordRevealTimerRef.current);
+      }
+      
+      // Show the modal
+      setShowWordReveal(true);
+      setWordCountdown(3);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Sequential countdown using timeouts
+      wordRevealTimerRef.current = setTimeout(() => {
+        setWordCountdown(2);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        
+        wordRevealTimerRef.current = setTimeout(() => {
+          setWordCountdown(1);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          
+          wordRevealTimerRef.current = setTimeout(() => {
+            setShowWordReveal(false);
+            setWordCountdown(0);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 1000);
+        }, 1000);
+      }, 1000);
+    }
+    
+    // Reset refs when player stops drawing or word clears
+    if (!isDrawing || !currentWord) {
+      lastWordRef.current = null;
+    }
+  }, [isDrawing, word, room.current_round]);
 
   // Timer pulse animation when low
   useEffect(() => {
@@ -280,8 +597,29 @@ export const MultiplayerGameScreen: React.FC<MultiplayerGameScreenProps> = ({
     Keyboard.dismiss();
   };
 
+  // Get team colors for the drawer
+  const getTeamInfo = () => {
+    const drawerTeam = currentDrawer?.team;
+    if (drawerTeam === 1) {
+      return { emoji: '🔵', name: 'Blue', bgColor: '#4ECDC4' };
+    }
+    return { emoji: '🔴', name: 'Red', bgColor: '#FF6B6B' };
+  };
+
+  const teamInfo = getTeamInfo();
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Word Reveal Modal for Drawer */}
+      <WordRevealModal
+        visible={showWordReveal}
+        word={word || ''}
+        countdown={wordCountdown}
+        teamEmoji={teamInfo.emoji}
+        teamName={teamInfo.name}
+        teamBgColor={teamInfo.bgColor}
+      />
+
       <TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
