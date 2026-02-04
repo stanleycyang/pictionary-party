@@ -13,13 +13,13 @@ import * as Haptics from 'expo-haptics';
 interface HomeScreenProps {
   onCreateRoom: () => void;
   onJoinRoom: () => void;
-  onLocalPlay: () => void;
+  onBack: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   onCreateRoom,
   onJoinRoom,
-  onLocalPlay,
+  onBack,
 }) => {
   // Animations
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -230,15 +230,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <Animated.View style={{ transform: [{ translateX: button3Slide }, { scale: button3Scale }] }}>
             <TouchableOpacity
               style={[styles.button, styles.tertiaryButton]}
-              onPress={() => handleButtonPress(button3Scale, onLocalPlay)}
+              onPress={() => handleButtonPress(button3Scale, onBack)}
               activeOpacity={1}
             >
-              <Text style={styles.buttonIcon}>📱</Text>
+              <Text style={styles.buttonIcon}>←</Text>
               <View style={styles.buttonTextContainer}>
-                <Text style={[styles.buttonText, styles.darkText]}>Local Play</Text>
-                <Text style={[styles.buttonSubtext, styles.darkSubtext]}>Same device</Text>
+                <Text style={[styles.buttonText, styles.darkText]}>Back</Text>
+                <Text style={[styles.buttonSubtext, styles.darkSubtext]}>Mode selection</Text>
               </View>
-              <Text style={[styles.buttonArrow, styles.darkText]}>→</Text>
             </TouchableOpacity>
           </Animated.View>
         </Animated.View>

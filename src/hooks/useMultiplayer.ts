@@ -73,6 +73,7 @@ export const useMultiplayer = () => {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const playerIdRef = useRef<string | null>(null);
   const currentPathRef = useRef<DrawingPath | null>(null);
+  const usedWordsRef = useRef<Set<string>>(new Set());
   
   const {
     room,
@@ -93,6 +94,7 @@ export const useMultiplayer = () => {
     clearDrawings,
     undoLastDrawing,
     addMessage,
+    clearMessages,
     setConnected,
     setError,
     reset,
@@ -120,10 +122,23 @@ export const useMultiplayer = () => {
     };
   }, []);
 
-  // Get a random word based on difficulty
+  // Get a random word based on difficulty (never repeats within a game)
   const getRandomWord = useCallback((difficulty: 'easy' | 'medium' | 'hard' = 'medium') => {
     const wordList = WORDS[difficulty];
-    return wordList[Math.floor(Math.random() * wordList.length)];
+    // Filter out already used words
+    const availableWords = wordList.filter(w => !usedWordsRef.current.has(w));
+    
+    // If all words used, reset (shouldn't happen with enough words)
+    if (availableWords.length === 0) {
+      usedWordsRef.current.clear();
+      const word = wordList[Math.floor(Math.random() * wordList.length)];
+      usedWordsRef.current.add(word);
+      return word;
+    }
+    
+    const word = availableWords[Math.floor(Math.random() * availableWords.length)];
+    usedWordsRef.current.add(word);
+    return word;
   }, []);
 
   // Create a new room
@@ -364,6 +379,42 @@ export const useMultiplayer = () => {
         break;
         
       case 'round_started':
+        // Clear all drawers first, then set the new drawer
+        state.players.forEach(p => {
+          if (p.is_drawing) {
+            updatePlayer(p.id, { is_drawing: false });
+          }
+        });
+        
+        // Set the new drawer
+        if (event.drawer_id) {
+          updatePlayer(event.drawer_id, { is_drawing: true });
+          // Update currentPlayer if it's us
+          if (state.currentPlayer?.id === event.drawer_id) {
+            setCurrentPlayer({ ...state.currentPlayer, is_drawing: true });
+          } else if (state.currentPlayer?.is_drawing) {
+            setCurrentPlayer({ ...state.currentPlayer, is_drawing: false });
+          }
+        }
+        
+        // Clear drawings, messages, and reset path tracking for new round
+        currentPathRef.current = null;
+        clearDrawings();
+        clearMessages();
+        
+        // Add a system message about who's drawing
+        const drawerName = state.players.find(p => p.id === event.drawer_id)?.name || 'Someone';
+        const teamName = event.drawing_team === 1 ? 'Blue' : 'Red';
+        addMessage({
+          id: `msg_round_${Date.now()}`,
+          room_id: state.room?.id || '',
+          player_id: 'system',
+          player_name: 'System',
+          text: `🎨 Round ${event.round}: ${drawerName} (Team ${teamName}) is drawing!`,
+          is_correct_guess: false,
+          timestamp: new Date().toISOString(),
+        });
+        
         setRoom(state.room ? { 
           ...state.room, 
           current_round: event.round, 
@@ -372,7 +423,6 @@ export const useMultiplayer = () => {
           round_start_time: new Date().toISOString(),
           status: 'playing',
         } : null);
-        clearDrawings();
         break;
         
       case 'new_word':
@@ -392,50 +442,192 @@ export const useMultiplayer = () => {
         break;
         
       case 'correct_guess':
-        // Update scores
+        // Update guesser's score
         const guesser = state.players.find(p => p.id === event.player_id);
+        const guesserPoints = event.guesser_points || event.points || 1;
         if (guesser) {
-          updatePlayer(guesser.id, { score: guesser.score + event.points });
+          const newGuesserScore = guesser.score + guesserPoints;
+          updatePlayer(guesser.id, { score: newGuesserScore });
+          // Also update currentPlayer if it's us
+          if (state.currentPlayer?.id === guesser.id) {
+            setCurrentPlayer({ ...state.currentPlayer, score: newGuesserScore });
+          }
         }
+        
+        // Update drawer's score (if different from guesser)
+        if (event.drawer_id && event.drawer_id !== event.player_id) {
+          const drawer = state.players.find(p => p.id === event.drawer_id);
+          const drawerPoints = event.drawer_points || 1;
+          if (drawer) {
+            const newDrawerScore = drawer.score + drawerPoints;
+            updatePlayer(drawer.id, { score: newDrawerScore });
+            // Also update currentPlayer if it's us
+            if (state.currentPlayer?.id === drawer.id) {
+              setCurrentPlayer({ ...state.currentPlayer, score: newDrawerScore });
+            }
+          }
+        }
+        
         // Mark message as correct guess
         addMessage({
           id: `msg_${Date.now()}`,
           room_id: state.room?.id || '',
           player_id: event.player_id,
           player_name: event.player_name,
-          text: '🎉 Correct!',
+          text: `🎉 Correct! The word was "${state.room?.current_word}"`,
           is_correct_guess: true,
           timestamp: new Date().toISOString(),
         });
+        
+        // Host triggers new round after a short delay
+        if (state.currentPlayer?.is_host) {
+          setTimeout(() => {
+            channelRef.current?.send({
+              type: 'broadcast',
+              event: 'room_event',
+              payload: { type: 'round_ended', round: state.room?.current_round },
+            });
+          }, 2000); // 2 second delay to show the correct answer
+        }
         break;
         
       case 'round_ended':
         if (state.room) {
+          const nextRound = state.room.current_round + 1;
+          const nextDrawingTeam = state.room.drawing_team === 1 ? 2 : 1;
+          
+          // Clear current drawer's status
+          state.players.forEach(p => {
+            if (p.is_drawing) {
+              updatePlayer(p.id, { is_drawing: false });
+            }
+          });
+          
+          // Clear drawings and reset path tracking
+          currentPathRef.current = null;
+          clearDrawings();
+          
+          // Update room state
           setRoom({
             ...state.room,
-            current_round: state.room.current_round + 1,
-            drawing_team: state.room.drawing_team === 1 ? 2 : 1,
+            current_round: nextRound,
+            drawing_team: nextDrawingTeam,
             current_word: null,
+            round_start_time: null,
           });
+          
+          // Check if game should end
+          if (nextRound > state.room.total_rounds) {
+            channelRef.current?.send({
+              type: 'broadcast',
+              event: 'room_event',
+              payload: { type: 'game_ended' },
+            });
+            return;
+          }
+          
+          // Host starts the next round after a brief pause
+          if (state.currentPlayer?.is_host) {
+            setTimeout(() => {
+              // Get players from next drawing team
+              const nextTeamPlayers = state.players.filter(p => p.team === nextDrawingTeam);
+              if (nextTeamPlayers.length > 0) {
+                // Pick a random drawer from the team (or rotate through players)
+                const nextDrawer = nextTeamPlayers[Math.floor(Math.random() * nextTeamPlayers.length)];
+                
+                // Pick a word that hasn't been used yet
+                const difficulty = state.room?.settings.difficulty || 'medium';
+                const wordList = WORDS[difficulty];
+                const availableWords = wordList.filter(w => !usedWordsRef.current.has(w));
+                const newWord = availableWords.length > 0
+                  ? availableWords[Math.floor(Math.random() * availableWords.length)]
+                  : wordList[Math.floor(Math.random() * wordList.length)];
+                usedWordsRef.current.add(newWord);
+                
+                channelRef.current?.send({
+                  type: 'broadcast',
+                  event: 'room_event',
+                  payload: { 
+                    type: 'round_started', 
+                    round: nextRound, 
+                    drawing_team: nextDrawingTeam,
+                    drawer_id: nextDrawer.id,
+                    word: newWord,
+                  },
+                });
+              }
+            }, 1500);
+          }
         }
-        clearDrawings();
         break;
         
       case 'game_ended':
         useGameStore.getState().endGame();
         break;
         
+      case 'game_reset':
+        // Reset for new game
+        state.players.forEach(player => {
+          updatePlayer(player.id, { 
+            score: 0, 
+            is_ready: false, 
+            is_drawing: false 
+          });
+        });
+        if (state.currentPlayer) {
+          setCurrentPlayer({ 
+            ...state.currentPlayer, 
+            score: 0, 
+            is_ready: false, 
+            is_drawing: false 
+          });
+        }
+        clearDrawings();
+        clearMessages();
+        usedWordsRef.current.clear(); // Reset word tracking for new game
+        setRoom(event.room);
+        break;
+        
+      case 'word_skipped':
+        // Show skip message to all players
+        addMessage({
+          id: `msg_skip_${Date.now()}`,
+          room_id: state.room?.id || '',
+          player_id: 'system',
+          player_name: 'System',
+          text: `⏭️ Word skipped! It was "${event.word}"`,
+          is_correct_guess: false,
+          timestamp: new Date().toISOString(),
+        });
+        break;
+        
       case 'chat':
-        addMessage(event.message);
+        // Don't add our own messages (already added locally in sendChat for instant feedback)
+        if (event.message.player_id !== state.currentPlayer?.id) {
+          addMessage(event.message);
+        }
         
         // Check if this is a correct guess (only host validates)
         if (state.currentPlayer?.is_host && state.room?.current_word) {
+          // Find the player who sent the message
+          const guessingPlayer = state.players.find(p => p.id === event.message.player_id);
+          
+          // Only players on the DRAWING team can guess (Pictionary rules)
+          // The drawer's teammates guess, not the other team
+          if (guessingPlayer?.team !== state.room.drawing_team) {
+            // Wrong team trying to guess - ignore
+            break;
+          }
+          
           const guess = event.message.text.toLowerCase().trim();
           const word = state.room.current_word.toLowerCase().trim();
           
           if (guess === word) {
-            // Correct guess!
-            const points = 10; // Base points
+            // Correct guess! Award points to both guesser and drawer
+            const guesserPoints = 1;
+            const drawerPoints = 1;
+            const currentDrawer = state.players.find(p => p.is_drawing);
+            
             channelRef.current?.send({
               type: 'broadcast',
               event: 'room_event',
@@ -443,14 +635,16 @@ export const useMultiplayer = () => {
                 type: 'correct_guess', 
                 player_id: event.message.player_id,
                 player_name: event.message.player_name,
-                points,
+                guesser_points: guesserPoints,
+                drawer_id: currentDrawer?.id,
+                drawer_points: drawerPoints,
               },
             });
           }
         }
         break;
     }
-  }, [addPlayer, removePlayer, updatePlayer, setRoom, clearDrawings, addMessage, addDrawing]);
+  }, [addPlayer, removePlayer, updatePlayer, setRoom, setCurrentPlayer, clearDrawings, clearMessages, addMessage, addDrawing]);
 
   // Handle drawing events - FIXED: Now properly reconstructs paths
   const handleDrawingEvent = useCallback((event: DrawingEvent) => {
@@ -491,6 +685,7 @@ export const useMultiplayer = () => {
         break;
         
       case 'clear':
+        currentPathRef.current = null; // Reset path tracking
         clearDrawings();
         break;
         
@@ -572,28 +767,30 @@ export const useMultiplayer = () => {
   const startGame = useCallback(() => {
     if (!currentPlayer?.is_host || !room) return;
     
+    // Clear any leftover messages from previous games
+    clearMessages();
+    usedWordsRef.current.clear(); // Also reset word tracking
+    
     // Pick first drawer from team 1
     const team1Players = players.filter(p => p.team === 1);
-    if (team1Players.length > 0) {
-      updatePlayer(team1Players[0].id, { is_drawing: true });
-      if (team1Players[0].id === currentPlayer.id) {
-        setCurrentPlayer({ ...currentPlayer, is_drawing: true });
-      }
-    }
+    if (team1Players.length === 0) return; // Need at least one player on team 1
+    
+    const firstDrawer = team1Players[0];
     
     // Pick a word
     const word = getRandomWord(room.settings.difficulty);
     
-    // Broadcast game start with round info
+    // Broadcast game start with round info (including drawer_id)
     sendEvent({ 
       type: 'round_started', 
       round: 1, 
       drawing_team: 1,
+      drawer_id: firstDrawer.id,
       word,
     });
     
     useGameStore.getState().startGame();
-  }, [currentPlayer, room, players, updatePlayer, setCurrentPlayer, sendEvent, getRandomWord]);
+  }, [currentPlayer, room, players, sendEvent, getRandomWord, clearMessages]);
 
   // Set a new word (for next round or when drawer picks)
   const setWord = useCallback((word: string) => {
@@ -618,6 +815,101 @@ export const useMultiplayer = () => {
     sendEvent({ type: 'round_ended', round: room.current_round });
   }, [currentPlayer, room, sendEvent]);
 
+  // Mark correct guess (drawer manually confirms their team got it)
+  const markCorrectGuess = useCallback(() => {
+    if (!currentPlayer?.is_drawing || !room) return;
+    
+    // Award points - drawer gets points for successful drawing
+    const drawerPoints = 1;
+    
+    sendEvent({ 
+      type: 'correct_guess', 
+      player_id: currentPlayer.id, // drawer gets the points for manual confirm
+      player_name: currentPlayer.name,
+      guesser_points: drawerPoints, // Points go to the drawer
+      drawer_id: null, // No separate drawer points (avoid double-counting)
+      drawer_points: 0,
+      manual: true, // Flag to indicate manual confirmation
+    });
+  }, [currentPlayer, room, sendEvent]);
+
+  // Skip current word (drawer gives up on this word)
+  const skipWord = useCallback(() => {
+    if (!currentPlayer?.is_drawing || !room) return;
+    
+    // Add a message that word was skipped
+    addMessage({
+      id: `msg_${Date.now()}`,
+      room_id: room.id,
+      player_id: 'system',
+      player_name: 'System',
+      text: `⏭️ Word skipped! It was "${room.current_word}"`,
+      is_correct_guess: false,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Broadcast skip and trigger round end
+    sendEvent({ type: 'word_skipped', word: room.current_word });
+    sendEvent({ type: 'round_ended', round: room.current_round });
+  }, [currentPlayer, room, sendEvent, addMessage]);
+
+  // Reset game for "play again" (host only)
+  const resetForNewGame = useCallback(() => {
+    if (!currentPlayer?.is_host || !room) return;
+    
+    // Reset all players' scores and ready status
+    const state = useGameStore.getState();
+    state.players.forEach(player => {
+      updatePlayer(player.id, { 
+        score: 0, 
+        is_ready: false, 
+        is_drawing: false 
+      });
+    });
+    
+    // Reset current player
+    setCurrentPlayer({ 
+      ...currentPlayer, 
+      score: 0, 
+      is_ready: false, 
+      is_drawing: false 
+    });
+    
+    // Clear game state
+    clearDrawings();
+    clearMessages();
+    usedWordsRef.current.clear(); // Reset word tracking for new game
+    
+    // Update room to lobby status
+    const newRoom: Room = {
+      ...room,
+      status: 'lobby',
+      current_round: 0,
+      current_word: null,
+      drawing_team: 1,
+      round_start_time: null,
+    };
+    setRoom(newRoom);
+    
+    // Broadcast reset to all players
+    sendEvent({ 
+      type: 'game_reset',
+      room: newRoom,
+    });
+    
+    // Update presence
+    if (channelRef.current) {
+      channelRef.current.track({ 
+        player: { 
+          ...currentPlayer, 
+          score: 0, 
+          is_ready: false, 
+          is_drawing: false 
+        } 
+      });
+    }
+  }, [currentPlayer, room, updatePlayer, setCurrentPlayer, clearDrawings, clearMessages, setRoom, sendEvent]);
+
   // Leave room
   const leaveRoom = useCallback(async () => {
     // Clear saved session
@@ -627,6 +919,7 @@ export const useMultiplayer = () => {
       await supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
+    usedWordsRef.current.clear(); // Reset word tracking
     reset();
   }, [reset]);
 
@@ -655,6 +948,9 @@ export const useMultiplayer = () => {
     setWord,
     endRound,
     getRandomWord,
+    markCorrectGuess,
+    skipWord,
+    resetForNewGame,
     
     // Communication
     sendEvent,

@@ -90,7 +90,10 @@ export default function App() {
   if (appMode === 'multiplayer') {
     return (
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        <MultiplayerApp onPlayLocal={() => transitionTo('local')} />
+        <MultiplayerApp 
+          onPlayLocal={() => transitionTo('local')} 
+          onBack={() => transitionTo('select')}
+        />
       </Animated.View>
     );
   }
@@ -233,6 +236,9 @@ const WordRevealModal: React.FC<WordRevealModalProps> = ({
   const wordBounce = useRef(new Animated.Value(0)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0.3)).current;
+  const wordBounceAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const shimmerAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const glowAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // Reset and animate on show
   useEffect(() => {
@@ -247,26 +253,44 @@ const WordRevealModal: React.FC<WordRevealModalProps> = ({
       ]).start();
       
       // Word bounce animation
-      Animated.loop(
+      wordBounceAnimRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(wordBounce, { toValue: -8, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           Animated.timing(wordBounce, { toValue: 0, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ])
-      ).start();
+      );
+      wordBounceAnimRef.current.start();
 
       // Shimmer effect
-      Animated.loop(
+      shimmerAnimRef.current = Animated.loop(
         Animated.timing(shimmerAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })
-      ).start();
+      );
+      shimmerAnimRef.current.start();
 
       // Glow pulse
-      Animated.loop(
+      glowAnimRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
           Animated.timing(glowAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
         ])
-      ).start();
+      );
+      glowAnimRef.current.start();
+    } else {
+      // Stop animations when modal closes
+      wordBounceAnimRef.current?.stop();
+      shimmerAnimRef.current?.stop();
+      glowAnimRef.current?.stop();
+      wordBounce.setValue(0);
+      shimmerAnim.setValue(0);
+      glowAnim.setValue(0.3);
     }
+    
+    return () => {
+      // Cleanup on unmount
+      wordBounceAnimRef.current?.stop();
+      shimmerAnimRef.current?.stop();
+      glowAnimRef.current?.stop();
+    };
   }, [visible]);
 
   // Pulse animation on countdown change
