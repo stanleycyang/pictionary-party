@@ -800,7 +800,7 @@ export const useMultiplayer = () => {
     
     // Clear any leftover messages from previous games
     clearMessages();
-    usedWordsRef.current.clear(); // Also reset word tracking
+    // Don't reset word tracking here so we don't repeat words in the same session
     
     // Pick first drawer from team 1
     const team1Players = players
@@ -914,7 +914,7 @@ export const useMultiplayer = () => {
     // Clear game state
     clearDrawings();
     clearMessages();
-    usedWordsRef.current.clear(); // Reset word tracking for new game
+    // Don't reset word tracking here so we don't repeat words in the same session
     
     // Update room to lobby status
     const newRoom: Room = {
